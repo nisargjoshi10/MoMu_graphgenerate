@@ -1,8 +1,11 @@
 import argparse
 import os
 import sys
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 # for linux env.
 sys.path.insert(0,'..')
+sys.path.insert(0,'/rs1/researchers/w/wjpfaend/nisargj/moljet/moflow')
 from distutils.util import strtobool
 import torch
 import torch.nn as nn
@@ -21,7 +24,7 @@ from rdkit import Chem, DataStructs
 from data import transform_qm9, transform_zinc250k
 from data.transform_zinc250k import zinc250_atomic_num_list, transform_fn_zinc250k
 from mflow.models.hyperparams import Hyperparameters
-from mflow.models.utils import check_validity, adj_to_smiles, check_novelty, valid_mol, construct_mol, _to_numpy_array, correct_mol,valid_mol_can_with_seg, construct_mol_with_validation, construct_mol_full #_miss
+from mflow.models.utils import check_validity, adj_to_smiles, check_novelty, valid_mol, construct_mol, _to_numpy_array, correct_mol,valid_mol_can_with_seg, construct_mol_with_validation #, construct_mol_full #_miss
 from mflow.utils.model_utils import load_model, get_latent_vec
 from mflow.models.model import MoFlow, rescale_adj
 import mflow.utils.environment as env
@@ -74,7 +77,7 @@ allowable_features = {
     ]
 }
 
-def generate_mols(model, temp=0.7, z_mu=None, batch_size=20, true_adj=None, device=-1):  #  gpu=-1):
+def generate_mols(model, temp=0.7, z_mu=None, batch_size=20, true_adj=None, device=1):  #  gpu=-1):
     """
 
     :param model: Moflow model
@@ -144,7 +147,6 @@ def generate_mols_fix(model, atomic_num_list, temp=0.7, z_mu=None, batch_size=20
             device = torch.device('cpu')
     else:
         raise ValueError("only 'torch.device' or 'int' are valid for 'device', but '%s' is "'given' % str(device))
-
     adj, x, adjori = model.reverse(z_mu, true_adj=true_adj)
 
     x0 = x.squeeze(0)
@@ -157,6 +159,7 @@ def generate_mols_fix(model, atomic_num_list, temp=0.7, z_mu=None, batch_size=20
     atoms_exist = atoms != len(atomic_num_list) - 1
     x0 = x0[atoms_exist]
     adjori = adjori.permute(1,2,0).contiguous()[atoms_exist, :][:, atoms_exist]
+
 
     index = (datamol.edge_index[0,:], datamol.edge_index[1,:])  
     edge_attr = adjori[index]
@@ -174,7 +177,7 @@ def MolTransfer(x, adj, atomic_num_list):
     """
     adj = adj.cpu()
     x = x.cpu()
-    mol = construct_mol_full(x, adj, atomic_num_list)
+    mol = construct_mol(x, adj, atomic_num_list) #construct_mol_full
 
     # atoms
     num_atom_features = 2   # atom type,  chirality tag
@@ -219,7 +222,7 @@ def MolTransfer(x, adj, atomic_num_list):
 
 
 def tokenizer_text(text, text_max_len):
-    tokenizer = BertTokenizer.from_pretrained('bert_pretrained/')
+    tokenizer = BertTokenizer.from_pretrained('bert_pretrained/') #instead of bert_pretrained/
     sentence_token = tokenizer(text=text,
                                truncation=True,
                                padding='max_length',
@@ -673,7 +676,7 @@ if __name__ == "__main__":
         device = torch.device('cpu')
     model.to(device)
     model.eval()  # Set model for evaluation
-
+    print('device:', device)
     for name, param in model.named_parameters():
         param.requires_grad = False
         # if name not in ['fc.weight', 'fc.bias']:
@@ -826,13 +829,14 @@ if __name__ == "__main__":
 
     text_num = len(input_text_list)
     print(text_num)
+    #print('device:', device)
     for j in range(text_num):
         smiles_res_current = []
         loss_res_current = []
 
         input_text = input_text_list[j]
-        all_seeds = np.zeros((60,z_dim))
-        for i in range(60):           
+        all_seeds = np.zeros((10,z_dim)) #number of molecules to be generated
+        for i in range(10):          #number of molecules to be generated 
             z = np.random.normal(mu, sigma, (batch_size, z_dim))
             all_seeds[i,:] = z[0,:]
             z_init = torch.from_numpy(z).float().to(device)
