@@ -167,9 +167,9 @@ def generate_mols_fix(model, atomic_num_list, temp=0.7, z_mu=None, batch_size=20
         adjori = adjori.squeeze(0)
     else:
         adjori = None
-
+    
     datamol = MolTransfer(x0, adj0, atomic_num_list)
-
+    
     atoms = torch.argmax(x0, axis=1)
     atoms_exist = atoms != len(atomic_num_list) - 1
     x0 = x0[atoms_exist]
@@ -183,7 +183,6 @@ def generate_mols_fix(model, atomic_num_list, temp=0.7, z_mu=None, batch_size=20
         edge_attr = adjori[index]
     else:
         edge_attr = None
-        
     return adj, x, x0, datamol, edge_attr
 
 
@@ -254,7 +253,7 @@ def tokenizer_text(text, text_max_len):
     attention_mask = sentence_token['attention_mask']
     return input_ids, attention_mask
 
-def run_z_optimize(model, atomic_num_list, graph_encoder, text_encoder, graph_proj_head, text_proj_head, input_text, z, device, num_steps=500):
+def run_z_optimize(model, atomic_num_list, graph_encoder, text_encoder, graph_proj_head, text_proj_head, input_text, z, device, num_steps=500): #num_steps = 500
     
     optimizer = torch.optim.Adam([z.requires_grad_()], lr=0.1)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 400, gamma=0.1)
@@ -294,12 +293,12 @@ def run_z_optimize(model, atomic_num_list, graph_encoder, text_encoder, graph_pr
 #         optimizer.step()
 #         scheduler.step()
 
-#         run[0] += 1
-#         if run[0] % 10 == 0:
-#             print("run {}:".format(run))
+        run[0] += 1
+        if run[0] % 10 == 0:
+            print("run {}:".format(run))
 #             print('Loss : {:4f}'.format(
 #                 loss.item()))
-#             print()
+            print()
 #     return z, loss.item()
     return z, loss
 
@@ -837,27 +836,18 @@ if __name__ == "__main__":
 
 
 
-    input_text_list = ['The molecule is beautiful.', 
-                       'The molecule is versatile.', 
-                       'The molecule is strange.',
-                       'fluorescent molecules', 
-                       'The molecule contains hydroxyl and carboxyl groups, which can be thermally decomposed to generate ammonia gas, and the oxygen content in the molecule is not less than 20%.',
-                       'The molecule has high water solubility and barrier permeability with low toxicity.',
-                       'molecules containing nucleophilic groups',
-                       'molecules containing electrophilic groups',
-                       'molecules containing hydrophilic groups', 
-                       'molecules containing lipophilic groups']
+    input_text_list = ['This molecule is a peptide. This molecule binds to F10 protein.'] 
 
     text_num = len(input_text_list)
-    print(text_num)
+    print('input text length:', text_num)
     #print('device:', device)
     for j in range(text_num):
         smiles_res_current = []
         loss_res_current = []
 
         input_text = input_text_list[j]
-        all_seeds = np.zeros((10,z_dim)) #number of molecules to be generated
-        for i in range(10):          #number of molecules to be generated 
+        all_seeds = np.zeros((2,z_dim)) #number of molecules to be generated
+        for i in range(2):          #number of molecules to be generated 
             z = np.random.normal(mu, sigma, (batch_size, z_dim))
             all_seeds[i,:] = z[0,:]
             z_init = torch.from_numpy(z).float().to(device)
@@ -865,7 +855,6 @@ if __name__ == "__main__":
             z.requires_grad = True
             z, loss = run_z_optimize(model, atomic_num_list, graph_encoder, text_encoder, graph_proj_head, text_proj_head, input_text, z, device)
             adj, x, _, _, _ = generate_mols_fix(model, atomic_num_list, batch_size=batch_size, z_mu=z, true_adj=None, temp=args.temperature, device=device)
-
             val_res = check_validity(adj, x, atomic_num_list, correct_validity=args.correct_validity)
 
             unique_ratio.append(val_res['unique_ratio'])
