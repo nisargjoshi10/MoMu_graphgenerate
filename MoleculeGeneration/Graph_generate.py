@@ -147,23 +147,43 @@ def generate_mols_fix(model, atomic_num_list, temp=0.7, z_mu=None, batch_size=20
             device = torch.device('cpu')
     else:
         raise ValueError("only 'torch.device' or 'int' are valid for 'device', but '%s' is "'given' % str(device))
-    adj, x, adjori = model.reverse(z_mu, true_adj=true_adj)
+    
+    output = model.reverse(z_mu, true_adj=true_adj)
+    if len(output) == 2:
+        adj = output[0]
+        x = output[1]
+        adjori = None
+    elif len(output) == 3:
+        adj = output[0]
+        x = output[1]
+        adjori = output[2]
+    else:
+        print('Error, model.reverse output is wrong')
+#     adj, x, adjori = model.reverse(z_mu, true_adj=true_adj)
 
     x0 = x.squeeze(0)
     adj0 = adj.squeeze(0)
-    adjori = adjori.squeeze(0)
+    if adjori is not None:
+        adjori = adjori.squeeze(0)
+    else:
+        adjori = None
 
     datamol = MolTransfer(x0, adj0, atomic_num_list)
 
     atoms = torch.argmax(x0, axis=1)
     atoms_exist = atoms != len(atomic_num_list) - 1
     x0 = x0[atoms_exist]
-    adjori = adjori.permute(1,2,0).contiguous()[atoms_exist, :][:, atoms_exist]
-
+    if adjori is not None:
+        adjori = adjori.permute(1,2,0).contiguous()[atoms_exist, :][:, atoms_exist]
+    else:
+        adjori = None
 
     index = (datamol.edge_index[0,:], datamol.edge_index[1,:])  
-    edge_attr = adjori[index]
-
+    if adjori is not None:
+        edge_attr = adjori[index]
+    else:
+        edge_attr = None
+        
     return adj, x, x0, datamol, edge_attr
 
 
@@ -257,30 +277,31 @@ def run_z_optimize(model, atomic_num_list, graph_encoder, text_encoder, graph_pr
             break
 
         xs = x0.softmax(dim=1)
+        loss = None
+#         try:
+#             graph_rep = graph_encoder(xs, edge_attr, datamol, atomic_num_list, device)
+#         except:
+#             print('Cannot encode the graph!!!')
+#             break
+#         graph_rep = graph_proj_head(graph_rep)
+#         graph_rep = F.normalize(graph_rep, dim=-1)
+#         loss = -torch.sum(graph_rep @ text_rep.t() / 0.1)
+#         if torch.isnan(loss):
+#             print(loss)
+#             break
 
-        try:
-            graph_rep = graph_encoder(xs, edge_attr, datamol, atomic_num_list, device)
-        except:
-            print('Cannot encode the graph!!!')
-            break
-        graph_rep = graph_proj_head(graph_rep)
-        graph_rep = F.normalize(graph_rep, dim=-1)
-        loss = -torch.sum(graph_rep @ text_rep.t() / 0.1)
-        if torch.isnan(loss):
-            print(loss)
-            break
+#         loss.backward()
+#         optimizer.step()
+#         scheduler.step()
 
-        loss.backward()
-        optimizer.step()
-        scheduler.step()
-
-        run[0] += 1
-        if run[0] % 10 == 0:
-            print("run {}:".format(run))
-            print('Loss : {:4f}'.format(
-                loss.item()))
-            print()
-    return z, loss.item()
+#         run[0] += 1
+#         if run[0] % 10 == 0:
+#             print("run {}:".format(run))
+#             print('Loss : {:4f}'.format(
+#                 loss.item()))
+#             print()
+#     return z, loss.item()
+    return z, loss
 
 
 def run_z_optimize_fast(model, atomic_num_list, graph_encoder, text_encoder, graph_proj_head, text_proj_head, input_text, z, device, num_steps=100):
