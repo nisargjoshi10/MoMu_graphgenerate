@@ -28,7 +28,8 @@ from mflow.models.utils import check_validity, adj_to_smiles, check_novelty, val
 from mflow.utils.model_utils import load_model, get_latent_vec
 from mflow.models.model import MoFlow, rescale_adj
 import mflow.utils.environment as env
-
+import re
+import json
 # from IPython.display import SVG, display
 import cairosvg
 from data.data_loader import NumpyTupleDataset
@@ -836,16 +837,21 @@ if __name__ == "__main__":
 
 
 
-    input_text_list = ['This molecule is a peptide. This molecule binds to F10 protein.'] 
+    input_text_list = ['This molecule is a peptide. This molecule binds to ABL1 protein.',
+                        'This molecule is a peptide. This molecule binds to ACHE protein.'] 
 
     text_num = len(input_text_list)
     print('input text length:', text_num)
-    #print('device:', device)
+    output_dict = {}
     for j in range(text_num):
         smiles_res_current = []
         loss_res_current = []
 
         input_text = input_text_list[j]
+        protein_name = re.search(r'\b([A-Za-z0-9]+)\s+protein\b', input_text).group(1)
+        output_dict[protein_name] = [] 
+
+
         all_seeds = np.zeros((2,z_dim)) #number of molecules to be generated
         for i in range(2):          #number of molecules to be generated 
             z = np.random.normal(mu, sigma, (batch_size, z_dim))
@@ -861,7 +867,7 @@ if __name__ == "__main__":
             abs_unique_ratio.append(val_res['abs_unique_ratio'])
             valid_ratio.append(val_res['valid_ratio'])
             n_valid = len(val_res['valid_mols'])
-
+        
             if args.save_score:
                 assert len(val_res['valid_smiles']) == len(val_res['valid_mols'])
                 smiles_qed_plogp = [(sm, env.qed(mol), env.penalized_logp(mol))
@@ -877,10 +883,12 @@ if __name__ == "__main__":
                 filepath2 = os.path.join(gen_dir, 'smiles_qed_plogp_{}_RankedByQED.csv'.format(i))
                 df2 = pd.DataFrame(smiles_qed_plogp, columns=['Smiles', 'QED', 'Penalized_logp'])
                 df2.to_csv(filepath2, index=None, header=True)
+            
+            output_dict[protein_name].append(val_res['valid_smiles'][0])
 
             # saves a png image of all generated molecules args.model_dir, discovery/
             if save_fig:
-                gen_dir = os.path.join('generated/sci/text_{}/'.format(j))
+                gen_dir = os.path.join('generated/sci/{}/'.format(protein_name))
                 os.makedirs(gen_dir, exist_ok=True)
                 filepath = os.path.join(gen_dir, 'mols_{}.png'.format(i))
                 # filepath = os.path.join(gen_dir, 'point_mols_4.png')
@@ -890,10 +898,12 @@ if __name__ == "__main__":
 
             smiles_res_current.append(val_res['valid_smiles'][0])
             loss_res_current.append(loss)
+
         smiles_res.append(smiles_res_current)
         loss_res.append(loss_res_current)
         seed_dir = os.path.join('generated/sci/all_seeds_{}.npy'.format(j))
         np.save(seed_dir, all_seeds)
+#        output_dict[protein_name] = smiles_res
 
     print("validity: mean={:.2f}%, sd={:.2f}%, vals={}".format(np.mean(valid_ratio), np.std(valid_ratio), valid_ratio))
     # print("novelty: mean={:.2f}%, sd={:.2f}%, vals={}".format(np.mean(novel_ratio), np.std(novel_ratio), novel_ratio))
@@ -905,6 +915,8 @@ if __name__ == "__main__":
           format(np.mean(abs_unique_ratio), np.std(abs_unique_ratio),
                                                                  abs_unique_ratio))
     print('Task random generation done! Time {:.2f} seconds, Data: {}'.format(time.time() - start, time.ctime()))
+    with open('generated/sci/generated_dict.json', 'w') as gen:
+        json.dump(output_dict, gen)
     
     for j in range(text_num):
         print(j)
